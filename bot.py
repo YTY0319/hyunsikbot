@@ -38,8 +38,13 @@ bot = commands.Bot(
 # 데이터베이스
 # ==================================================
 
+DB_PATH = os.getenv(
+    "RAILWAY_VOLUME_MOUNT_PATH",
+    str(BASE_DIR)
+)
+
 db = sqlite3.connect(
-    BASE_DIR / "games.db"
+    Path(DB_PATH) / "games.db"
 )
 
 db.execute("""
