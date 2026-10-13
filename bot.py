@@ -841,8 +841,6 @@ async def get_er_user(session, nickname):
         f"/v1/user/nickname?query={nickname}"
     )
 
-    print("ER USER RESPONSE:", data)
-
     if not data:
         return None
 
@@ -1157,13 +1155,11 @@ async def er_record(
 
             return
 
-        uid = user.get("uid")
+        uid = user.get("userId") or user.get("uid")
 
         if not uid:
-            print("UID 누락 user 데이터:", user)
-
             await interaction.followup.send(
-                "유저 정보는 조회됐지만 UID를 받지 못했습니다. 서버 로그를 확인해주세요."
+                "유저 ID를 가져오지 못했습니다."
             )
             return
 
@@ -1335,7 +1331,13 @@ async def er_rating(
 
             return
 
-        uid = user["uid"]
+        uid = user.get("userId") or user.get("uid")
+
+        if not uid:
+            await interaction.followup.send(
+                "유저 ID를 가져오지 못했습니다."
+            )
+            return
 
         real_name = user.get(
             "nickname",
