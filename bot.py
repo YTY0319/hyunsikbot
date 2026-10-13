@@ -1699,6 +1699,8 @@ async def er_rating(
         # ------------------------------
         # TOP3 경기 팀원 캐릭터
         # ------------------------------
+        teammate_top3 = []
+        teammate_counter = Counter()
 
         good_games = [
             game
