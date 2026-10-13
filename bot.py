@@ -1709,7 +1709,7 @@ async def er_rating(
                 "gameRank",
                 99
             ) <= 3
-        ][:8]
+        ][:3]
 
         teammate_counter = Counter()
 
@@ -2042,10 +2042,6 @@ async def er_rating(
             )
         )
 
-        server_rank = user_rank.get(
-            "serverRank"
-        )
-
         total_games = stats.get(
             "totalGames",
             0
@@ -2277,13 +2273,6 @@ async def er_rating(
         f"**전체 순위**\n"
         f"{global_rank}"
     )
-
-    if server_rank is not None:
-
-        message += (
-            f"\n\n**서버 순위**\n"
-            f"{server_rank:,}위"
-        )
 
     message += (
         f"\n\n**시즌 기록**\n"
