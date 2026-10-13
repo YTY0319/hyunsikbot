@@ -796,10 +796,7 @@ async def before_release_checker():
 # 이터널 리턴 API 공통 함수
 # ==================================================
 
-async def er_request(
-    session,
-    endpoint
-):
+async def er_request(session, endpoint):
     headers = {
         "x-api-key": ER_API_KEY
     }
@@ -809,20 +806,42 @@ async def er_request(
         headers=headers
     ) as response:
 
-        if response.status != 200:
+        try:
+            data = await response.json()
+        except Exception:
+            text = await response.text()
+            print(
+                f"ER API JSON 오류 | "
+                f"HTTP {response.status} | "
+                f"{endpoint} | {text}"
+            )
             return None
 
-        return await response.json()
+        if response.status != 200:
+            print(
+                f"ER API HTTP 오류 | "
+                f"HTTP {response.status} | "
+                f"{endpoint} | {data}"
+            )
+            return None
+
+        if data.get("code") != 200:
+            print(
+                f"ER API 응답 오류 | "
+                f"{endpoint} | {data}"
+            )
+            return None
+
+        return data
 
 
-async def get_er_user(
-    session,
-    nickname
-):
+async def get_er_user(session, nickname):
     data = await er_request(
         session,
         f"/v1/user/nickname?query={nickname}"
     )
+
+    print("ER USER RESPONSE:", data)
 
     if not data:
         return None
@@ -1138,7 +1157,15 @@ async def er_record(
 
             return
 
-        uid = user["uid"]
+        uid = user.get("uid")
+
+        if not uid:
+            print("UID 누락 user 데이터:", user)
+
+            await interaction.followup.send(
+                "유저 정보는 조회됐지만 UID를 받지 못했습니다. 서버 로그를 확인해주세요."
+            )
+            return
 
         real_name = user.get(
             "nickname",
