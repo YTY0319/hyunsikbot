@@ -12,8 +12,20 @@ import io
 
 from collections import Counter
 from PIL import Image, ImageDraw
+from urllib.parse import quote
 
+CHARACTER_ICON_DIR = BASE_DIR / "assets" / "characters"
 
+def get_character_icon_path(code):
+    if code is None:
+        return None
+
+    path = CHARACTER_ICON_DIR / f"{code}.png"
+
+    if path.exists():
+        return path
+
+    return None
 # ==================================================
 # 기본 설정
 # ==================================================
@@ -923,15 +935,15 @@ def get_character_name(
 # ==================================================
 
 def make_rp_graph(
-    scores
+    scores, most_three=None
 ):
     width = 800
-    height = 420
+    height = 500
 
     margin_left = 80
     margin_right = 40
     margin_top = 50
-    margin_bottom = 70
+    margin_bottom = 150
 
     image = Image.new(
         "RGB",
@@ -1103,6 +1115,92 @@ def make_rp_graph(
         )
 
     buffer = io.BytesIO()
+
+        # 모스트 3 캐릭터
+    if most_three:
+
+        start_x = 120
+        icon_y = 330
+        icon_size = 56
+        gap = 220
+
+        for i, char in enumerate(most_three[:3]):
+
+            code = (
+                char.get("characterCode")
+                or char.get("characterNum")
+            )
+
+            name = get_character_name(code)
+
+            games_played = char.get(
+                "totalGames",
+                0
+            )
+
+            wins = char.get(
+                "wins",
+                0
+            )
+
+            if games_played > 0:
+                win_rate = (
+                    wins
+                    / games_played
+                    * 100
+                )
+            else:
+                win_rate = 0
+
+            x = start_x + (i * gap)
+
+            icon_path = get_character_icon_path(
+                code
+            )
+
+            if icon_path:
+
+                try:
+                    icon = Image.open(
+                        icon_path
+                    ).convert("RGBA")
+
+                    icon = icon.resize(
+                        (
+                            icon_size,
+                            icon_size
+                        )
+                    )
+
+                    image.paste(
+                        icon,
+                        (x, icon_y),
+                        icon
+                    )
+
+                except Exception as e:
+                    print(
+                        f"캐릭터 아이콘 오류: {e}"
+                    )
+
+            draw.text(
+                (
+                    x + 68,
+                    icon_y
+                ),
+                name,
+                fill="black"
+            )
+
+            draw.text(
+                (
+                    x + 68,
+                    icon_y + 20
+                ),
+                f"{games_played}게임"
+                f" / {win_rate:.0f}%",
+                fill="black"
+            )
 
     image.save(
         buffer,
@@ -1290,6 +1388,10 @@ async def er_record(
 # /점수
 # ==================================================
 
+# ==================================================
+# /점수
+# ==================================================
+
 @bot.tree.command(
     name="점수",
     description="이터널 리턴 랭크 점수와 통계를 조회합니다."
@@ -1305,11 +1407,9 @@ async def er_rating(
     await interaction.response.defer()
 
     if not ER_API_KEY:
-
         await interaction.followup.send(
             "ER_API_KEY가 설정되어 있지 않습니다."
         )
-
         return
 
     async with aiohttp.ClientSession() as session:
@@ -1324,14 +1424,15 @@ async def er_rating(
         )
 
         if not user:
-
             await interaction.followup.send(
                 f"{닉네임} 유저를 찾을 수 없습니다."
             )
-
             return
 
-        uid = user.get("userId") or user.get("uid")
+        uid = (
+            user.get("userId")
+            or user.get("uid")
+        )
 
         if not uid:
             await interaction.followup.send(
@@ -1342,6 +1443,510 @@ async def er_rating(
         real_name = user.get(
             "nickname",
             닉네임
+        )
+
+        # ------------------------------
+        # 최근 전적
+        # ------------------------------
+
+        games_data = await er_request(
+            session,
+            f"/v1/user/games/uid/{uid}"
+        )
+
+        if not games_data:
+            await interaction.followup.send(
+                "전적 정보를 불러오지 못했습니다."
+            )
+            return
+
+        games = games_data.get(
+            "userGames",
+            []
+        )
+
+        ranked_games = [
+            game
+            for game in games
+            if game.get("matchingMode") == 3
+        ]
+
+        if not ranked_games:
+            await interaction.followup.send(
+                f"{real_name}의 최근 랭크 전적이 없습니다."
+            )
+            return
+
+        # ------------------------------
+        # 현재 시즌
+        # ------------------------------
+
+        season_id = ranked_games[0].get(
+            "seasonId"
+        )
+
+        current_season_games = [
+            game
+            for game in ranked_games
+            if game.get("seasonId") == season_id
+        ]
+
+        # ------------------------------
+        # 현재 랭크 정보
+        # ------------------------------
+
+        rank_data = await er_request(
+            session,
+            f"/v1/rank/uid/{uid}/{season_id}/3"
+        )
+
+        stats_data = await er_request(
+            session,
+            f"/v2/user/stats/uid/{uid}/{season_id}/3"
+        )
+
+        if not rank_data or not stats_data:
+            await interaction.followup.send(
+                "랭크 정보를 불러오지 못했습니다."
+            )
+            return
+
+        user_rank = rank_data.get(
+            "userRank"
+        )
+
+        stats_list = stats_data.get(
+            "userStats",
+            []
+        )
+
+        if not user_rank or not stats_list:
+            await interaction.followup.send(
+                "현재 시즌 랭크 정보가 없습니다."
+            )
+            return
+
+        stats = stats_list[0]
+
+        current_rp = user_rank.get(
+            "mmr",
+            stats.get("mmr", 0)
+        )
+
+        global_rank = user_rank.get(
+            "rank",
+            stats.get("rank", "-")
+        )
+
+        server_rank = user_rank.get(
+            "serverRank"
+        )
+
+        total_games = stats.get(
+            "totalGames",
+            0
+        )
+
+        total_wins = stats.get(
+            "totalWins",
+            stats.get("wins", 0)
+        )
+
+        average_rank = stats.get(
+            "averageRank",
+            0
+        )
+
+        average_kills = stats.get(
+            "averageKills",
+            0
+        )
+
+        average_assists = stats.get(
+            "averageAssistants",
+            stats.get(
+                "averageAssists",
+                0
+            )
+        )
+
+        # 승률
+        if total_games > 0:
+            win_rate = (
+                total_wins
+                / total_games
+                * 100
+            )
+        else:
+            win_rate = 0
+
+        # ------------------------------
+        # 캐릭터 이름
+        # ------------------------------
+
+        await load_character_names(
+            session
+        )
+
+        # ------------------------------
+        # 모스트 3
+        # ------------------------------
+
+        character_stats = stats.get(
+            "characterStats",
+            []
+        )
+
+        character_stats.sort(
+            key=lambda x: x.get(
+                "totalGames",
+                0
+            ),
+            reverse=True
+        )
+
+        most_three = character_stats[:3]
+
+        # ------------------------------
+        # 최근 20게임
+        # ------------------------------
+
+        recent_ranked = (
+            current_season_games[:20]
+        )
+
+        recent_ranks = [
+            game.get(
+                "gameRank",
+                0
+            )
+            for game in recent_ranked
+        ]
+
+        if recent_ranks:
+            recent_avg_rank = (
+                sum(recent_ranks)
+                / len(recent_ranks)
+            )
+        else:
+            recent_avg_rank = 0
+
+        # ------------------------------
+        # RP 변화량
+        # ------------------------------
+
+        gains = []
+
+        for game in recent_ranked:
+
+            gain = game.get(
+                "mmrGainGambit"
+            )
+
+            if gain is None:
+                gain = game.get(
+                    "mmrGain",
+                    0
+                )
+
+            gains.append(gain)
+
+        total_gain = sum(gains)
+
+        # ------------------------------
+        # RP 그래프용 점수
+        # ------------------------------
+
+        if (
+            recent_ranked
+            and all(
+                game.get("mmrAfter")
+                is not None
+                for game in recent_ranked
+            )
+        ):
+
+            scores = [
+                game["mmrAfter"]
+                for game
+                in reversed(
+                    recent_ranked
+                )
+            ]
+
+        else:
+
+            start_rp = (
+                current_rp
+                - sum(gains)
+            )
+
+            scores = [
+                start_rp
+            ]
+
+            running = start_rp
+
+            for gain in reversed(
+                gains
+            ):
+
+                running += gain
+
+                scores.append(
+                    running
+                )
+
+        graph_buffer = make_rp_graph(
+            scores, most_three
+        )
+
+        # ------------------------------
+        # TOP3 경기 팀원 캐릭터
+        # ------------------------------
+
+        good_games = [
+            game
+            for game in current_season_games
+            if game.get(
+                "gameRank",
+                99
+            ) <= 3
+        ][:8]
+
+        teammate_counter = Counter()
+
+        for game in good_games:
+
+            game_id = game.get(
+                "gameId"
+            )
+
+            my_team = game.get(
+                "teamNumber"
+            )
+
+            if (
+                game_id is None
+                or my_team is None
+            ):
+                continue
+
+            match_data = await er_request(
+                session,
+                f"/v1/games/{game_id}"
+            )
+
+            if not match_data:
+                continue
+
+            players = match_data.get(
+                "userGames",
+                []
+            )
+
+            for player in players:
+
+                if (
+                    player.get(
+                        "teamNumber"
+                    )
+                    != my_team
+                ):
+                    continue
+
+                player_id = (
+                    player.get("userId")
+                    or player.get("uid")
+                )
+
+                if player_id == uid:
+                    continue
+
+                character_code = player.get(
+                    "characterNum"
+                )
+
+                if character_code is not None:
+
+                    teammate_counter[
+                        character_code
+                    ] += 1
+
+        teammate_top3 = (
+            teammate_counter.most_common(
+                3
+            )
+        )
+
+    # ==================================================
+    # Embed 생성
+    # ==================================================
+
+    embed = discord.Embed(
+        title=real_name,
+        description=(
+            f"**{current_rp:,} RP**\n"
+        )
+    )
+
+    # 현재 순위
+    rank_text = ""
+
+    if isinstance(
+        global_rank,
+        int
+    ):
+        rank_text += (
+            f"전체 {global_rank:,}위"
+        )
+    else:
+        rank_text += (
+            f"전체 {global_rank}"
+        )
+
+    if server_rank is not None:
+        rank_text += (
+            f" | 서버 {server_rank:,}위"
+        )
+
+    embed.description += (
+        f"{rank_text}\n\n"
+        f"**{total_games}게임 | "
+        f"승률 {win_rate:.1f}% | "
+        f"평균 {average_rank:.1f}등 | "
+        f"킬 {average_kills:.1f} | "
+        f"어시 {average_assists:.1f}**\n\n"
+        f"최근 {len(recent_ranked)}게임 | "
+        f"평균 {recent_avg_rank:.1f}등 | "
+        f"RP {total_gain:+d}"
+    )
+
+    # ------------------------------
+    # 모스트 3
+    # ------------------------------
+
+    if most_three:
+
+        for index, char in enumerate(
+            most_three,
+            start=1
+        ):
+
+            code = (
+                char.get("characterCode")
+                or char.get("characterNum")
+            )
+
+            character_name = (
+                get_character_name(code)
+            )
+
+            games_played = char.get(
+                "totalGames",
+                0
+            )
+
+            wins = char.get(
+                "wins",
+                char.get(
+                    "totalWins",
+                    0
+                )
+            )
+
+            if games_played > 0:
+                char_win_rate = (
+                    wins
+                    / games_played
+                    * 100
+                )
+            else:
+                char_win_rate = 0
+
+            avg_rank = char.get(
+                "averageRank",
+                0
+            )
+
+
+    # ------------------------------
+    # 좋은 성적의 팀원 캐릭터
+    # ------------------------------
+
+    if teammate_top3:
+
+        teammate_text = ""
+
+        for index, (
+            code,
+            count
+        ) in enumerate(
+            teammate_top3,
+            start=1
+        ):
+
+            name = get_character_name(
+                code
+            )
+
+            teammate_text += (
+                f"{index}. {name} · "
+                f"{count}회\n"
+            )
+
+        embed.add_field(
+            name="TOP3 경기에서 자주 함께한 캐릭터",
+            value=teammate_text,
+            inline=False
+        )
+
+    # ==================================================
+    # DAK.GG 버튼
+    # ==================================================
+
+    view = discord.ui.View()
+
+    dak_url = (
+        "https://dak.gg/er/players/"
+        + quote(real_name)
+    )
+
+    dak_button = discord.ui.Button(
+        label="DAK.GG",
+        url=dak_url
+    )
+
+    view.add_item(
+        dak_button
+    )
+
+    # ==================================================
+    # 그래프 출력
+    # ==================================================
+
+    if graph_buffer:
+
+        file = discord.File(
+            graph_buffer,
+            filename="rp_trend.png"
+        )
+
+        embed.set_image(
+            url="attachment://rp_trend.png"
+        )
+
+        await interaction.followup.send(
+            embed=embed,
+            file=file,
+            view=view
+        )
+
+    else:
+
+        await interaction.followup.send(
+            embed=embed,
+            view=view
         )
 
         # ------------------------------
