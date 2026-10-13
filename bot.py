@@ -14,8 +14,6 @@ from collections import Counter
 from PIL import Image, ImageDraw
 from urllib.parse import quote
 
-CHARACTER_ICON_DIR = BASE_DIR / "assets" / "characters"
-
 def get_character_icon_path(code):
     if code is None:
         return None
@@ -26,9 +24,12 @@ def get_character_icon_path(code):
         return path
 
     return None
+
+
 # ==================================================
 # 기본 설정
 # ==================================================
+
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -36,6 +37,7 @@ load_dotenv(
     BASE_DIR / ".env",
     override=True
 )
+CHARACTER_ICON_DIR = BASE_DIR / "assets" / "characters"
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 ER_API_KEY = os.getenv("ER_API_KEY")
