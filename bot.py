@@ -1922,14 +1922,12 @@ async def er_rating(
         await interaction.followup.send(
             embed=embed,
             file=file,
-            view=view
         )
 
     else:
 
         await interaction.followup.send(
             embed=embed,
-            view=view
         )
 
         # ------------------------------
