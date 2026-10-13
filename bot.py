@@ -1390,9 +1390,6 @@ async def er_record(
 # /점수
 # ==================================================
 
-# ==================================================
-# /점수
-# ==================================================
 
 @bot.tree.command(
     name="점수",
@@ -1538,10 +1535,6 @@ async def er_rating(
         global_rank = user_rank.get(
             "rank",
             stats.get("rank", "-")
-        )
-
-        server_rank = user_rank.get(
-            "serverRank"
         )
 
         total_games = stats.get(
@@ -1720,13 +1713,9 @@ async def er_rating(
 
         for game in good_games:
 
-            game_id = game.get(
-                "gameId"
-            )
-
-            my_team = game.get(
-                "teamNumber"
-            )
+            game_id = game.get("gameId")
+            my_team = game.get("teamNumber")
+            my_character = game.get("characterNum")
 
             if (
                 game_id is None
@@ -1762,24 +1751,40 @@ async def er_rating(
                     or player.get("uid")
                 )
 
-                if player_id == uid:
-                    continue
+                for player in players:
 
-                character_code = player.get(
-                    "characterNum"
-                )
+    # 같은 팀만
+                    if player.get("teamNumber") != my_team:
+                        continue
 
-                if character_code is not None:
-
-                    teammate_counter[
-                        character_code
-                    ] += 1
-
-        teammate_top3 = (
-            teammate_counter.most_common(
-                3
+            player_id = (
+                player.get("userId")
+                or player.get("uid")
             )
-        )
+
+            player_name = player.get("nickname")
+
+            character_code = player.get(
+                "characterNum"
+            )
+
+            # 본인 제외 - ID 기준
+            if player_id == uid:
+                continue
+
+            # 본인 제외 - 닉네임 기준
+            if player_name == real_name:
+                continue
+
+            # 본인이 플레이한 캐릭터 제외
+            if character_code == my_character:
+                continue
+
+            if character_code is not None:
+                teammate_counter[
+                    character_code
+                ] += 1
+
 
     # ==================================================
     # Embed 생성
@@ -1805,11 +1810,6 @@ async def er_rating(
     else:
         rank_text += (
             f"전체 {global_rank}"
-        )
-
-    if server_rank is not None:
-        rank_text += (
-            f" | 서버 {server_rank:,}위"
         )
 
     embed.description += (
@@ -1902,27 +1902,6 @@ async def er_rating(
             value=teammate_text,
             inline=False
         )
-
-    # ==================================================
-    # DAK.GG 버튼
-    # ==================================================
-
-    view = discord.ui.View()
-
-    dak_url = (
-        "https://dak.gg/er/players/"
-        + quote(real_name)
-    )
-
-    dak_button = discord.ui.Button(
-        label="DAK.GG",
-        url=dak_url
-    )
-
-    view.add_item(
-        dak_button
-    )
-
     # ==================================================
     # 그래프 출력
     # ==================================================
@@ -2426,17 +2405,19 @@ async def er_rating(
             filename="rp_trend.png"
         )
 
+        embed.set_image(
+        url="attachment://rp_trend.png"
+        )
+
         await interaction.followup.send(
-            message,
+            embed=embed,
             file=file
         )
 
     else:
-
         await interaction.followup.send(
-            message
+        embed=embed
         )
-
 # ==================================================
 # 실행
 # ==================================================
